@@ -45,7 +45,7 @@ bool parseOrderLine(const std::string &line, orderbook::Order &o) {
 
 int main() {
     std::string session_id = generateRandomSessionId();
-    std::string log_file = "latencies_ " + session_id + ".bin";
+    std::string log_file = "latencies_" + session_id + ".bin";
     orderbook::OrderBook ob(log_file);
     if (ob.initialize() != 0) {
         std::cerr << "failed to initialize orderbook\n";
