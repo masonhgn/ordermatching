@@ -18,7 +18,6 @@ class Server {
 private:
     static const int PORT = 5000;
     static const int BUFF_SIZE = 1024;
-    char buffer[BUFF_SIZE];
     int server_fd, client_fd;
     sockaddr_in server_addr;
     sockaddr_in client_addr;

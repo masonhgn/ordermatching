@@ -15,12 +15,12 @@ int Client::connect_to_server() {
     server_addr.sin_port = htons(server_port);
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr) <= 0) {
+    // if (inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr) <= 0) {
 
-        std::cerr << "invalid address / address not supported\n";
-        close(client_fd);
-        return 1;
-    }
+    //     std::cerr << "invalid address / address not supported\n";
+    //     close(client_fd);
+    //     return 1;
+    // }
 
     if (connect(client_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         std::cerr << "connection failed\n";

@@ -82,36 +82,60 @@ int Server::wait_for_client_connection() {
 
 
 void Server::listen_to_client() {
+    std::string leftover; // for incomplete orders
+    char buffer[BUFF_SIZE];
+
+
     while (true) {
         memset(buffer, 0, BUFF_SIZE); //clear buffer
         ssize_t bytes_read = recv(client_fd, buffer, BUFF_SIZE, 0); //get client input
-        if (bytes_read <= 0) {
-            std::cout << "client disconnected or error...\n";
+
+
+        if (bytes_read < 0) {
+            std::cerr << "error: recv() failed\n";
+            break;
+        } else if (bytes_read == 0) {
+            std::cout << "client disconnected\n";
             break;
         }
 
-        std::string order_str(buffer);
-        std::cout << "received order: " << order_str << "\n";
+        std::string data(buffer, bytes_read);
+        leftover += data;
 
-        Order o;
-        if (parseOrderLine(order_str, o)) {
-            // Acquire lock, push to queue
-            {
-                std::lock_guard<std::mutex> lock(*orderMutex);
-                orderQueue->push(o);
+        size_t pos;
+        while ((pos = leftover.find('\n')) != std::string::npos) {
+            std::string order_str = leftover.substr(0, pos);
+            leftover.erase(0, pos + 1);
+
+            std::cout << "received order: " << order_str << "\n";
+
+            Order o;
+            if (parseOrderLine(order_str, o)) {
+                {
+                    std::lock_guard<std::mutex> lock(*orderMutex);
+                    orderQueue->push(o);
+                }
+                orderCV->notify_one();
+            } else {
+                std::cerr << "invalid order format: " << order_str << "\n";
             }
-            // Notify consumer
-            orderCV->notify_one();
-        } else {
-            std::cerr << "invalid order format: " << order_str << "\n";
         }
 
-
-
     }
+    std::cout << "exiting listen_to_client.\n";
 }
 
 void Server::stop_server() {
-    close(client_fd);
-    close(server_fd);
+    if (client_fd >= 0) {
+        shutdown(client_fd, SHUT_RDWR);
+        close(client_fd);
+        std::cout << "client socket closed\n";
+        client_fd = -1;
+    }
+    if (server_fd >= 0) {
+        shutdown(server_fd, SHUT_RDWR);
+        close(server_fd);
+        std::cout << "server socket closed\n";
+        server_fd = -1;
+    }
 }

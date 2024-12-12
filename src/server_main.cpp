@@ -8,13 +8,24 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
+#include <csignal>
 #include "server.h" 
 #include "orderbook.h"
 
 static std::queue<Order> orderQueue; //order buffer between the producer (server) and consumer (orderbook)
 static std::mutex orderQueueMutex; //mutex for variable above
 static std::condition_variable orderAvailableCV; //condition variable signaling if an order is in the queue
-static bool stopRequested = false; //for wrapping things up
+static std::atomic<bool> stopRequested(false); //for wrapping things up
+
+
+//handle Ctrl+C gracefully
+void signalHandler(int signum) {
+    if (signum == SIGINT) {
+        stopRequested.store(true);
+        orderAvailableCV.notify_all();
+    }
+}
 
 
 void orderBookConsumer(OrderBook &ob) {
@@ -22,17 +33,20 @@ void orderBookConsumer(OrderBook &ob) {
         Order o;
         {
             std::unique_lock<std::mutex> lock(orderQueueMutex);
-            orderAvailableCV.wait(lock, []{ return !orderQueue.empty() || stopRequested; });
+            orderAvailableCV.wait(lock, []{ return !orderQueue.empty() || stopRequested.load(); });
 
-            if (stopRequested && orderQueue.empty()) { //doesn't stop processing orders until orderQueue is empty
+            if (stopRequested.load() && orderQueue.empty()) { //doesn't stop processing orders until orderQueue is empty
                 break; // no more orders and stop requested
             }
 
-            o = orderQueue.front();
-            orderQueue.pop();
+            if (!orderQueue.empty()) {
+                o = orderQueue.front();
+                orderQueue.pop();
+            } else continue;
         }
         ob.process(o);
     }
+    std::cout << "order feed thread exited\n";
 }
 
 
@@ -51,6 +65,10 @@ inline std::string generateRandomSessionId() {
 }
 
 int main() {
+
+    //handle signal
+    std::signal(SIGINT, signalHandler);
+
     std::string session_id = generateRandomSessionId();
     std::string log_file = "latencies_" + session_id + ".bin";
     OrderBook ob(log_file);
@@ -65,30 +83,50 @@ int main() {
         return 1;
     }
 
+    std::cout << "waiting for client connection...\n";
     if (s.wait_for_client_connection() != 0) {
         std::cerr << "failed to accept client connection\n";
         s.stop_server();
         return 1;
     }
 
-    std::thread consumerThread(orderBookConsumer, std::ref(ob));
 
     s.setSharedResources(&orderQueue, &orderQueueMutex, &orderAvailableCV); //set the bridge between server & orderbook
-    s.listen_to_client();
-    
 
+    std::thread consumerThread(orderBookConsumer, std::ref(ob));
+    std::cout << "order feed thread started\n";
+
+    std::thread serverThread([&s]() {
+        std::cout << "server now listening to client...\n";
+        s.listen_to_client();
+        std::cout << "server stopped listening to client\n";
+    });
+
+
+    while (!stopRequested.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    std::cout << "\nreceived shutdown signal (Ctrl+C)\n";
 
     s.stop_server();
-
+    std::cout << "\nserver stopped\n";
     {
         std::lock_guard<std::mutex> lock(orderQueueMutex);
-        stopRequested = true;
     }
-    orderAvailableCV.notify_all();
-    consumerThread.join();
+
+    orderAvailableCV.notify_all(); //wake up order feed thread
+
+    if (serverThread.joinable()) {
+        serverThread.join();
+        std::cout << "\nserver thread joined\n";
+    }
+    if (consumerThread.joinable()) {
+        consumerThread.join();
+        std::cout << "\norder feed thread joined\n";
+    }
 
     ob.finalize_log();
     ob.writeReport("report_"+session_id+".rpt");
-
+    std::cout << "report generated: report_" + session_id + ".rpt\n";
     return 0;
 }
