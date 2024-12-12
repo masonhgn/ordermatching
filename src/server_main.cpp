@@ -124,9 +124,10 @@ int main() {
         consumerThread.join();
         std::cout << "\norder feed thread joined\n";
     }
-
-    ob.finalize_log();
-    ob.writeReport("report_"+session_id+".rpt");
-    std::cout << "report generated: report_" + session_id + ".rpt\n";
+    if (ob.getTotalOrdersProcessed() > 0) {
+        ob.finalize_log();
+        ob.writeReport("report_"+session_id+".rpt");
+        std::cout << "report generated: report_" + session_id + ".rpt\n";
+    }
     return 0;
 }

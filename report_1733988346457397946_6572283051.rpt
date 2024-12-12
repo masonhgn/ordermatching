@@ -1,6 +1,0 @@
-OrderBook Processing Report
------------------------
-Total Orders Processed: 2
-Average Latency (ns): 25339
-Min Latency (ns): 647
-Max Latency (ns): 50031

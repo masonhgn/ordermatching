@@ -42,22 +42,9 @@ void OrderBook::flushLatencyData() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void OrderBook::insert(const Order& order) { //adds order to orderbook
-    int idx = priceToIndex(order.price);
+    //int idx = priceToIndex(order.price);
+    int idx = order.price - MIN_PRICE;
     if (order.buy) { //add order, update index
         bids[idx].push_back(order);
         if (bestBidIndex == -1 || idx > bestBidIndex) bestBidIndex = idx;

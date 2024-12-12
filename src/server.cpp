@@ -1,5 +1,6 @@
 
 #include "server.h"
+#include "orderbook.h"
 
 
 Server::Server() : server_fd(-1), client_fd(-1), orderQueue(nullptr), orderMutex(nullptr), orderCV(nullptr) {}
@@ -22,8 +23,7 @@ bool Server::parseOrderLine(const std::string &line, Order &o) {
 
     // Create order
     o.buy = (side == "buy");
-    int intPrice = static_cast<int>(price * 100 + 0.5);
-    o.price = intPrice;
+    o.price = static_cast<int>(price * 100 + 0.5);
     o.quantity = quantity;
     return true;
 }
@@ -107,7 +107,7 @@ void Server::listen_to_client() {
             std::string order_str = leftover.substr(0, pos);
             leftover.erase(0, pos + 1);
 
-            std::cout << "received order: " << order_str << "\n";
+            //std::cout << "received order: " << order_str << "\n";
 
             Order o;
             if (parseOrderLine(order_str, o)) {
