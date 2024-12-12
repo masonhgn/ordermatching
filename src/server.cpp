@@ -1,7 +1,32 @@
-#include "include/server.h"
+
+#include "server.h"
 
 
-Server::Server() : server_fd(-1), client_fd(-1) {}
+Server::Server() : server_fd(-1), client_fd(-1), orderQueue(nullptr), orderMutex(nullptr), orderCV(nullptr) {}
+
+
+void Server::setSharedResources(std::queue<Order>* q, std::mutex* m, std::condition_variable* cv) {
+    orderQueue = q;
+    orderMutex = m;
+    orderCV = cv;
+}
+
+bool Server::parseOrderLine(const std::string &line, Order &o) {
+    std::istringstream iss(line);
+    std::string side;
+    int quantity;
+    double price;
+
+    if (!(iss >> side >> quantity >> price)) return false; // parsing failed
+    if (side != "buy" && side != "sell") return false; // invalid side
+
+    // Create order
+    o.buy = (side == "buy");
+    int intPrice = static_cast<int>(price * 100 + 0.5);
+    o.price = intPrice;
+    o.quantity = quantity;
+    return true;
+}
 
 
 int Server::initialize() {
@@ -17,8 +42,9 @@ int Server::initialize() {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;   
-
+    //server_addr.sin_addr.s_addr = INADDR_ANY; 
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    
     if (bind(server_fd, (struct sockaddr*) &server_addr, sizeof(server_addr)) < 0) {
         std::cerr << "could not bind\n";
         close(server_fd);
@@ -51,6 +77,10 @@ int Server::wait_for_client_connection() {
     return 0;
 }
 
+
+
+
+
 void Server::listen_to_client() {
     while (true) {
         memset(buffer, 0, BUFF_SIZE); //clear buffer
@@ -63,7 +93,18 @@ void Server::listen_to_client() {
         std::string order_str(buffer);
         std::cout << "received order: " << order_str << "\n";
 
-        
+        Order o;
+        if (parseOrderLine(order_str, o)) {
+            // Acquire lock, push to queue
+            {
+                std::lock_guard<std::mutex> lock(*orderMutex);
+                orderQueue->push(o);
+            }
+            // Notify consumer
+            orderCV->notify_one();
+        } else {
+            std::cerr << "invalid order format: " << order_str << "\n";
+        }
 
 
 

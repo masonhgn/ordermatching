@@ -5,8 +5,36 @@
 #include <functional>
 #include <random>
 #include <chrono>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
 #include "server.h" 
 #include "orderbook.h"
+
+static std::queue<Order> orderQueue; //order buffer between the producer (server) and consumer (orderbook)
+static std::mutex orderQueueMutex; //mutex for variable above
+static std::condition_variable orderAvailableCV; //condition variable signaling if an order is in the queue
+static bool stopRequested = false; //for wrapping things up
+
+
+void orderBookConsumer(OrderBook &ob) {
+    while (true) {
+        Order o;
+        {
+            std::unique_lock<std::mutex> lock(orderQueueMutex);
+            orderAvailableCV.wait(lock, []{ return !orderQueue.empty() || stopRequested; });
+
+            if (stopRequested && orderQueue.empty()) { //doesn't stop processing orders until orderQueue is empty
+                break; // no more orders and stop requested
+            }
+
+            o = orderQueue.front();
+            orderQueue.pop();
+        }
+        ob.process(o);
+    }
+}
+
 
 
 inline std::string generateRandomSessionId() {
@@ -22,31 +50,10 @@ inline std::string generateRandomSessionId() {
     
 }
 
-
-//parses a single order line
-bool parseOrderLine(const std::string &line, orderbook::Order &o) {
-    std::istringstream iss(line);
-    std::string side;
-    int quantity;
-    double price;
-
-    if (!(iss >> side >> quantity >> price)) return false; // parsing failed
-
-    if (side != "buy" && side != "sell") return false; //invalid side
-
-    
-    //create order
-    o.buy = (side == "buy");
-    int intPrice = static_cast<int>(price * 100 + 0.5);
-    o.price = intPrice;
-    o.quantity = quantity;
-    return true;
-}
-
 int main() {
     std::string session_id = generateRandomSessionId();
     std::string log_file = "latencies_" + session_id + ".bin";
-    orderbook::OrderBook ob(log_file);
+    OrderBook ob(log_file);
     if (ob.initialize() != 0) {
         std::cerr << "failed to initialize orderbook\n";
         return 1;
@@ -64,21 +71,22 @@ int main() {
         return 1;
     }
 
-    auto handleLine = [&](const std::string &line) {
-        orderbook::Order o;
-        if (!parseOrderLine(line, o)) {
-            std::cerr << "invalid order format: " << line << "\n";
+    std::thread consumerThread(orderBookConsumer, std::ref(ob));
 
-            return;
-        }
-        ob.process(o);
-
-    };
-
-    s.listen_to_client(handleLine);
+    s.setSharedResources(&orderQueue, &orderQueueMutex, &orderAvailableCV); //set the bridge between server & orderbook
+    s.listen_to_client();
+    
 
 
     s.stop_server();
+
+    {
+        std::lock_guard<std::mutex> lock(orderQueueMutex);
+        stopRequested = true;
+    }
+    orderAvailableCV.notify_all();
+    consumerThread.join();
+
     ob.finalize_log();
     ob.writeReport("report_"+session_id+".rpt");
 

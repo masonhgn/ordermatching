@@ -1,10 +1,12 @@
-#ifndef CLIENT_H
-#define CLIENT_H
+
 
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
+
+#ifndef CLIENT_H
+#define CLIENT_H
 
 class Client {
 private:

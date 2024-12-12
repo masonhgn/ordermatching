@@ -9,7 +9,7 @@
 
 
 
-inline std::vector<orderbook::Order> generateRandomOrders(
+inline std::vector<Order> generateRandomOrders(
     size_t count, 
     int minPrice = 100, 
     int maxPrice = 100000, 

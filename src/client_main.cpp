@@ -9,7 +9,7 @@
 
 
 //convert order to string for sending through buffer
-inline std::string orderToString(const orderbook::Order &o) {
+inline std::string orderToString(const Order &o) {
     std::string side = o.buy ? "buy" : "sell";
     double price_dollars = o.price / 100.0;
     std::ostringstream oss;
@@ -72,8 +72,8 @@ int main(int argc, char *argv[]) {
 
     } else if (argc == 3) {
         file_name = argv[2];
-        std::vector<orderbook::Order> orders;
-        if (!utilities::loadOrdersFromFile(file_name, orders)) {
+        std::vector<Order> orders;
+        if (!loadOrdersFromFile(file_name, orders)) {
             std::cerr << "failed to load orders from " << file_name << "\n";
             c.close_client();
             return 1;
